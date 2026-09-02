@@ -1,0 +1,10 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+</IfModule>
+
+# Todos los PHP bajo public pasan por el guard de autenticación.
+<IfModule mod_php.c>
+    php_value auto_prepend_file "C:/laragon/www/songa-eventos/app/RouteGuard.php"
+</IfModule>
