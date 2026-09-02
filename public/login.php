@@ -6,11 +6,7 @@ require_once __DIR__ . '/../app/Database.php';
 require_once __DIR__ . '/../app/Auth.php';
 
 if (usuarioAutenticado()) {
-    if (usuarioEsAdmin()) {
-        header('Location: /admin/eventos.php');
-    } else {
-        header('Location: /operador/registro.php');
-    }
+    header('Location: ' . (usuarioEsAdmin() ? '/admin/eventos.php' : '/operador/registro.php'));
     exit;
 }
 
@@ -25,13 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $db = Database::connection();
-
-            $stmt = $db->prepare('
+            $stmt = $db->prepare("
                 SELECT id, nombre, usuario_login, password_hash, rol, activo
                 FROM usuarios
                 WHERE usuario_login = :usuario
                 LIMIT 1
-            ');
+            ");
             $stmt->execute([':usuario' => $usuario]);
             $registro = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -43,19 +38,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ) {
                 $error = 'Usuario o contraseña incorrectos.';
             } else {
-                session_regenerate_id(true);
+                $rol = strtoupper(trim((string)$registro['rol']));
 
-                $_SESSION['usuario_id'] = (int)$registro['id'];
-                $_SESSION['usuario_nombre'] = (string)$registro['nombre'];
-                $_SESSION['usuario_login'] = (string)$registro['usuario_login'];
-                $_SESSION['usuario_rol'] = strtoupper((string)$registro['rol']);
-
-                if ($_SESSION['usuario_rol'] === 'ADMIN') {
-                    header('Location: /admin/eventos.php');
+                if (!in_array($rol, ['ADMIN', 'OPERADOR'], true)) {
+                    $error = 'El usuario no tiene un rol válido.';
                 } else {
-                    header('Location: /operador/registro.php');
+                    session_regenerate_id(true);
+                    $_SESSION['usuario_id'] = (int)$registro['id'];
+                    $_SESSION['usuario_nombre'] = (string)$registro['nombre'];
+                    $_SESSION['usuario_login'] = (string)$registro['usuario_login'];
+                    $_SESSION['usuario_rol'] = $rol;
+
+                    header('Location: ' . ($rol === 'ADMIN' ? '/admin/eventos.php' : '/operador/registro.php'));
+                    exit;
                 }
-                exit;
             }
         } catch (Throwable $e) {
             $error = 'No se pudo iniciar sesión: ' . $e->getMessage();
@@ -76,11 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="card">
     <h1>Songa Event Control</h1>
     <p>Ingrese sus credenciales para continuar.</p>
-
     <?php if ($error !== ''): ?>
-        <div class="error"><?= htmlspecialchars($error) ?></div>
+        <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
-
     <form method="POST" autocomplete="off">
         <div class="campo">
             <label for="usuario">Usuario</label>
@@ -92,7 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <button class="btn" type="submit">Iniciar sesión</button>
     </form>
-
     <div class="marca">Acceso controlado por rol</div>
 </div>
 </body>
