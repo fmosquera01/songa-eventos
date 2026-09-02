@@ -2,806 +2,229 @@
 
 declare(strict_types=1);
 
-session_start();
-
 require_once __DIR__ . '/../../app/Database.php';
+require_once __DIR__ . '/../../app/Auth.php';
 
+exigirAdminOOperador();
 
-/*
-|--------------------------------------------------------------------------
-| RESPUESTA JSON
-|--------------------------------------------------------------------------
-*/
+header('Content-Type: application/json; charset=utf-8');
 
-header(
-    'Content-Type: application/json; charset=utf-8'
-);
-
-
-/*
-|--------------------------------------------------------------------------
-| FUNCIÓN DE RESPUESTA
-|--------------------------------------------------------------------------
-*/
-
-function respuesta(
-    array $datos,
-    int $codigo = 200
-): never {
-
-    http_response_code(
-        $codigo
-    );
-
-    echo json_encode(
-        $datos,
-        JSON_UNESCAPED_UNICODE
-    );
-
+function respuesta(array $datos, int $codigo = 200): never
+{
+    http_response_code($codigo);
+    echo json_encode($datos, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| MÉTODO
-|--------------------------------------------------------------------------
-*/
-
-if (
-    $_SERVER['REQUEST_METHOD'] !== 'POST'
-) {
-
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respuesta([
         'estado' => 'ERROR',
         'titulo' => 'Solicitud no válida',
-        'mensaje' =>
-            'La solicitud debe realizarse mediante POST.'
+        'mensaje' => 'La solicitud debe realizarse mediante POST.'
     ], 405);
 }
 
+$identificador = trim((string)($_POST['identificador'] ?? ''));
 
-/*
-|--------------------------------------------------------------------------
-| DATOS
-|--------------------------------------------------------------------------
-*/
-
-$eventoId =
-    (int)(
-        $_POST['evento_id']
-        ?? 0
-    );
-
-
-$identificador =
-    trim(
-        (string)(
-            $_POST['identificador']
-            ?? ''
-        )
-    );
-
-
-/*
-|--------------------------------------------------------------------------
-| VALIDAR
-|--------------------------------------------------------------------------
-*/
-
-if (
-    $eventoId <= 0
-) {
-
-    respuesta([
-        'estado' => 'ERROR',
-        'titulo' => 'Evento no válido',
-        'mensaje' =>
-            'No se recibió un evento válido.'
-    ], 400);
-}
-
-
-if (
-    $identificador === ''
-) {
-
+if ($identificador === '') {
     respuesta([
         'estado' => 'ERROR',
         'titulo' => 'Dato vacío',
-        'mensaje' =>
-            'Ingrese un código o cédula.'
+        'mensaje' => 'Ingrese un código o cédula.'
     ], 400);
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| BASE DE DATOS
-|--------------------------------------------------------------------------
-*/
-
-$db =
-    Database::connection();
-
+$db = Database::connection();
 
 try {
+    /* El servidor determina el evento. Nunca confiamos en evento_id enviado por el navegador. */
+    $stmt = $db->query("
+        SELECT id, nombre, estado, validar_estado
+        FROM eventos
+        WHERE estado = 'ACTIVO'
+        ORDER BY id ASC
+    ");
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDAR EVENTO
-    |--------------------------------------------------------------------------
-    */
+    $eventosActivos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt =
-        $db->prepare("
-            SELECT
-                id,
-                nombre,
-                estado
-            FROM eventos
-            WHERE id = :evento_id
-            LIMIT 1
-        ");
-
-    $stmt->execute([
-        ':evento_id' =>
-            $eventoId
-    ]);
-
-    $evento =
-        $stmt->fetch();
-
-
-    if (!$evento) {
-
+    if (count($eventosActivos) === 0) {
         respuesta([
             'estado' => 'ERROR',
-            'titulo' =>
-                'Evento no encontrado',
-            'mensaje' =>
-                'El evento no existe.'
-        ], 404);
+            'titulo' => 'SIN EVENTO ACTIVO',
+            'mensaje' => 'No existe actualmente un evento activo para registrar asistencia.'
+        ], 409);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | EVENTO ACTIVO
-    |--------------------------------------------------------------------------
-    */
-
-    if (
-        $evento['estado'] !==
-        'ACTIVO'
-    ) {
-
+    if (count($eventosActivos) > 1) {
         respuesta([
             'estado' => 'ERROR',
-            'titulo' =>
-                'Evento no activo',
-            'mensaje' =>
-                'Este evento no está habilitado para registrar asistencia.'
-        ]);
+            'titulo' => 'CONFIGURACIÓN INVÁLIDA',
+            'mensaje' => 'Existe más de un evento ACTIVO. Debe quedar solamente uno activo.'
+        ], 409);
     }
 
+    $evento = $eventosActivos[0];
+    $eventoId = (int)$evento['id'];
 
-    /*
-    |--------------------------------------------------------------------------
-    | BUSCAR COLABORADOR
-    |--------------------------------------------------------------------------
-    |
-    | Primero buscamos por COD.
-    | Si no existe, buscamos por CÉDULA.
-    |
-    */
+    /* El usuario debe existir y permanecer activo. No existe usuario temporal de respaldo. */
+    $usuarioId = (int)($_SESSION['usuario_id'] ?? 0);
+    $stmt = $db->prepare("SELECT id FROM usuarios WHERE id = :id AND activo = 1 LIMIT 1");
+    $stmt->execute([':id' => $usuarioId]);
+    $usuarioId = (int)$stmt->fetchColumn();
 
-    $stmt =
-        $db->prepare("
-            SELECT
-                id,
-                evento_id,
-                cod,
-                cedula,
-                apellidos_nombres,
-                area,
-                empresa,
-                estado
-            FROM evento_colaboradores
-            WHERE evento_id = :evento_id
-              AND (
-                    cod = :identificador_cod
-                    OR cedula = :identificador_cedula
-                  )
-            LIMIT 1
-        ");
+    if ($usuarioId <= 0) {
+        respuesta([
+            'estado' => 'ERROR',
+            'titulo' => 'SESIÓN NO VÁLIDA',
+            'mensaje' => 'El usuario de la sesión no existe o está inactivo.'
+        ], 401);
+    }
 
+    /* Buscar colaborador por código o cédula dentro del evento activo. */
+    $stmt = $db->prepare("
+        SELECT id, evento_id, cod, cedula, apellidos_nombres, area, empresa, estado
+        FROM evento_colaboradores
+        WHERE evento_id = :evento_id
+          AND (cod = :identificador_cod OR cedula = :identificador_cedula)
+        LIMIT 1
+    ");
     $stmt->execute([
-
-        ':evento_id' =>
-            $eventoId,
-
-        ':identificador_cod' =>
-            $identificador,
-
-        ':identificador_cedula' =>
-            $identificador
-
+        ':evento_id' => $eventoId,
+        ':identificador_cod' => $identificador,
+        ':identificador_cedula' => $identificador
     ]);
 
-
-    $colaborador =
-        $stmt->fetch();
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | NO ENCONTRADO
-    |--------------------------------------------------------------------------
-    */
+    $colaborador = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$colaborador) {
-
         respuesta([
-
-            'estado' =>
-                'ERROR',
-
-            'titulo' =>
-                'NO AUTORIZADO',
-
-            'mensaje' =>
-                'La persona no se encuentra en el listado de este evento.'
-
+            'estado' => 'ERROR',
+            'titulo' => 'NO AUTORIZADO',
+            'mensaje' => 'La persona no se encuentra en el listado de este evento.'
         ]);
     }
 
+    $colaboradorId = (int)$colaborador['id'];
 
-    $colaboradorId =
-        (int)$colaborador['id'];
+    /* Validación opcional del estado del colaborador. */
+    if ((bool)$evento['validar_estado'] && $colaborador['estado'] !== null && trim((string)$colaborador['estado']) !== '') {
+        $estado = mb_strtoupper(trim((string)$colaborador['estado']), 'UTF-8');
+        $estadosInactivos = ['INACTIVO', 'INACTIVA', 'BAJA', 'CESADO', 'CESADA', 'RETIRADO', 'RETIRADA', 'NO ACTIVO', 'NO ACTIVA'];
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDAR ESTADO DEL COLABORADOR
-    |--------------------------------------------------------------------------
-    |
-    | Si el evento tiene validar_estado = 1,
-    | verificamos el campo estado.
-    |
-    */
-
-    $stmt =
-        $db->prepare("
-            SELECT
-                validar_estado
-            FROM eventos
-            WHERE id = :evento_id
-            LIMIT 1
-        ");
-
-    $stmt->execute([
-        ':evento_id' =>
-            $eventoId
-    ]);
-
-    $validarEstado =
-        (bool)$stmt->fetchColumn();
-
-
-    if (
-        $validarEstado &&
-        $colaborador['estado'] !== null &&
-        trim(
-            (string)$colaborador['estado']
-        ) !== ''
-    ) {
-
-        $estado =
-            mb_strtoupper(
-                trim(
-                    (string)$colaborador['estado']
-                ),
-                'UTF-8'
-            );
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | ESTADOS QUE CONSIDERAMOS INACTIVOS
-        |--------------------------------------------------------------------------
-        */
-
-        $estadosInactivos = [
-
-            'INACTIVO',
-
-            'INACTIVA',
-
-            'BAJA',
-
-            'CESADO',
-
-            'CESADA',
-
-            'RETIRADO',
-
-            'RETIRADA',
-
-            'NO ACTIVO',
-
-            'NO ACTIVA'
-
-        ];
-
-
-        if (
-            in_array(
-                $estado,
-                $estadosInactivos,
-                true
-            )
-        ) {
-
+        if (in_array($estado, $estadosInactivos, true)) {
             respuesta([
-
-                'estado' =>
-                    'ERROR',
-
-                'titulo' =>
-                    'COLABORADOR INACTIVO',
-
-                'mensaje' =>
-                    'El colaborador figura como inactivo en el listado.',
-
+                'estado' => 'ERROR',
+                'titulo' => 'COLABORADOR INACTIVO',
+                'mensaje' => 'El colaborador figura como inactivo en el listado.',
                 'colaborador' => [
-
-                    'cod' =>
-                        $colaborador['cod'],
-
-                    'cedula' =>
-                        $colaborador['cedula'],
-
-                    'apellidos_nombres' =>
-                        $colaborador['apellidos_nombres'],
-
-                    'area' =>
-                        $colaborador['area']
-
+                    'cod' => $colaborador['cod'],
+                    'cedula' => $colaborador['cedula'],
+                    'apellidos_nombres' => $colaborador['apellidos_nombres'],
+                    'area' => $colaborador['area']
                 ]
-
             ]);
         }
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | BUSCAR ASISTENCIA PREVIA
-    |--------------------------------------------------------------------------
-    */
-
-    $stmt =
-        $db->prepare("
-            SELECT
-                id,
-                fecha_hora,
-                metodo
-            FROM registros
-            WHERE evento_id = :evento_id
-              AND colaborador_id = :colaborador_id
-              AND tipo_registro = 'ASISTENCIA'
-            ORDER BY fecha_hora ASC
-            LIMIT 1
-        ");
-
+    /* Evitar doble asistencia. */
+    $stmt = $db->prepare("
+        SELECT id, fecha_hora, metodo
+        FROM registros
+        WHERE evento_id = :evento_id
+          AND colaborador_id = :colaborador_id
+          AND tipo_registro = 'ASISTENCIA'
+        ORDER BY fecha_hora ASC
+        LIMIT 1
+    ");
     $stmt->execute([
-
-        ':evento_id' =>
-            $eventoId,
-
-        ':colaborador_id' =>
-            $colaboradorId
-
+        ':evento_id' => $eventoId,
+        ':colaborador_id' => $colaboradorId
     ]);
 
-
-    $registroAnterior =
-        $stmt->fetch();
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | YA INGRESÓ
-    |--------------------------------------------------------------------------
-    */
+    $registroAnterior = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($registroAnterior) {
-
-        $fecha =
-            $registroAnterior['fecha_hora'];
-
-
-        $timestamp =
-            strtotime(
-                $fecha
-            );
-
-
-        $hora =
-            $timestamp
-                ? date(
-                    'd/m/Y H:i:s',
-                    $timestamp
-                )
-                : $fecha;
-
+        $fecha = (string)$registroAnterior['fecha_hora'];
+        $timestamp = strtotime($fecha);
+        $hora = $timestamp ? date('d/m/Y H:i:s', $timestamp) : $fecha;
 
         respuesta([
-
-            'estado' =>
-                'DUPLICADO',
-
-            'titulo' =>
-                'YA REGISTRÓ SU INGRESO',
-
-            'mensaje' =>
-                'Este colaborador ya tiene registrada su asistencia.',
-
-            'hora' =>
-                $hora,
-
+            'estado' => 'DUPLICADO',
+            'titulo' => 'YA REGISTRÓ SU INGRESO',
+            'mensaje' => 'Este colaborador ya tiene registrada su asistencia.',
+            'hora' => $hora,
             'colaborador' => [
-
-                'cod' =>
-                    $colaborador['cod'],
-
-                'cedula' =>
-                    $colaborador['cedula'],
-
-                'apellidos_nombres' =>
-                    $colaborador['apellidos_nombres'],
-
-                'area' =>
-                    $colaborador['area'],
-
-                'empresa' =>
-                    $colaborador['empresa']
-
+                'cod' => $colaborador['cod'],
+                'cedula' => $colaborador['cedula'],
+                'apellidos_nombres' => $colaborador['apellidos_nombres'],
+                'area' => $colaborador['area'],
+                'empresa' => $colaborador['empresa']
             ]
-
         ]);
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | DETERMINAR MÉTODO
-    |--------------------------------------------------------------------------
-    */
-
     $metodo = 'MANUAL';
-
-
-    if (
-        $identificador ===
-        (string)$colaborador['cod']
-    ) {
-
-        $metodo =
-            'CODIGO';
-
-    } elseif (
-        $colaborador['cedula'] !== null &&
-        $identificador ===
-        (string)$colaborador['cedula']
-    ) {
-
-        $metodo =
-            'CEDULA';
+    if ($identificador === (string)$colaborador['cod']) {
+        $metodo = 'CODIGO';
+    } elseif ($colaborador['cedula'] !== null && $identificador === (string)$colaborador['cedula']) {
+        $metodo = 'CEDULA';
     }
 
+    $dispositivo = trim((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    $dispositivo = substr($dispositivo, 0, 150);
+    $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 
-    /*
-    |--------------------------------------------------------------------------
-    | USUARIO DEL SISTEMA
-    |--------------------------------------------------------------------------
-    */
-
-    $usuarioId =
-        isset(
-            $_SESSION['usuario_id']
-        )
-            ? (int)$_SESSION['usuario_id']
-            : 0;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | IMPORTANTE
-    |--------------------------------------------------------------------------
-    |
-    | Si todavía no hemos implementado
-    | el login, usamos el primer usuario
-    | activo como operador temporal.
-    |
-    */
-
-    if (
-        $usuarioId <= 0
-    ) {
-
-        $stmt =
-            $db->query("
-                SELECT id
-                FROM usuarios
-                WHERE activo = 1
-                ORDER BY id ASC
-                LIMIT 1
-            ");
-
-        $usuarioId =
-            (int)$stmt->fetchColumn();
-    }
-
-
-    if (
-        $usuarioId <= 0
-    ) {
-
-        respuesta([
-
-            'estado' =>
-                'ERROR',
-
-            'titulo' =>
-                'Usuario no configurado',
-
-            'mensaje' =>
-                'No existe un usuario activo para registrar la asistencia.'
-
-        ], 500);
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | DISPOSITIVO
-    |--------------------------------------------------------------------------
-    */
-
-    $dispositivo =
-        trim(
-            (string)(
-                $_SERVER['HTTP_USER_AGENT']
-                ?? ''
-            )
-        );
-
-
-    if (
-        strlen($dispositivo) > 150
-    ) {
-
-        $dispositivo =
-            substr(
-                $dispositivo,
-                0,
-                150
-            );
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | IP
-    |--------------------------------------------------------------------------
-    */
-
-    $ip =
-        $_SERVER['REMOTE_ADDR']
-        ?? null;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | INSERTAR ASISTENCIA
-    |--------------------------------------------------------------------------
-    */
-
-    $stmt =
-        $db->prepare("
-            INSERT INTO registros
-            (
-                evento_id,
-                colaborador_id,
-                tipo_registro,
-                fecha_hora,
-                usuario_id,
-                metodo,
-                dispositivo,
-                ip,
-                observacion
-            )
-            VALUES
-            (
-                :evento_id,
-                :colaborador_id,
-                'ASISTENCIA',
-                NOW(),
-                :usuario_id,
-                :metodo,
-                :dispositivo,
-                :ip,
-                NULL
-            )
-        ");
-
-
+    $stmt = $db->prepare("
+        INSERT INTO registros
+        (evento_id, colaborador_id, tipo_registro, fecha_hora, usuario_id, metodo, dispositivo, ip, observacion)
+        VALUES (:evento_id, :colaborador_id, 'ASISTENCIA', NOW(), :usuario_id, :metodo, :dispositivo, :ip, NULL)
+    ");
     $stmt->execute([
-
-        ':evento_id' =>
-            $eventoId,
-
-        ':colaborador_id' =>
-            $colaboradorId,
-
-        ':usuario_id' =>
-            $usuarioId,
-
-        ':metodo' =>
-            $metodo,
-
-        ':dispositivo' =>
-            $dispositivo,
-
-        ':ip' =>
-            $ip
-
+        ':evento_id' => $eventoId,
+        ':colaborador_id' => $colaboradorId,
+        ':usuario_id' => $usuarioId,
+        ':metodo' => $metodo,
+        ':dispositivo' => $dispositivo,
+        ':ip' => $ip
     ]);
 
+    $stmt = $db->prepare("SELECT COUNT(*) FROM evento_colaboradores WHERE evento_id = :evento_id");
+    $stmt->execute([':evento_id' => $eventoId]);
+    $total = (int)$stmt->fetchColumn();
 
-    /*
-    |--------------------------------------------------------------------------
-    | HORA
-    |--------------------------------------------------------------------------
-    */
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT colaborador_id) FROM registros WHERE evento_id = :evento_id AND tipo_registro = 'ASISTENCIA'");
+    $stmt->execute([':evento_id' => $eventoId]);
+    $asistentes = (int)$stmt->fetchColumn();
 
-    $hora =
-        date(
-            'd/m/Y H:i:s'
-        );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | ESTADÍSTICAS ACTUALIZADAS
-    |--------------------------------------------------------------------------
-    */
-
-    $stmt =
-        $db->prepare("
-            SELECT COUNT(*)
-            FROM evento_colaboradores
-            WHERE evento_id = :evento_id
-        ");
-
-    $stmt->execute([
-        ':evento_id' =>
-            $eventoId
-    ]);
-
-    $total =
-        (int)$stmt->fetchColumn();
-
-
-    $stmt =
-        $db->prepare("
-            SELECT COUNT(DISTINCT colaborador_id)
-            FROM registros
-            WHERE evento_id = :evento_id
-              AND tipo_registro = 'ASISTENCIA'
-        ");
-
-    $stmt->execute([
-        ':evento_id' =>
-            $eventoId
-    ]);
-
-    $asistentes =
-        (int)$stmt->fetchColumn();
-
-
-    $pendientes =
-        max(
-            0,
-            $total -
-            $asistentes
-        );
-
-
-    $porcentaje =
-        $total > 0
-            ? round(
-                ($asistentes / $total) * 100,
-                1
-            )
-            : 0;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | RESPUESTA
-    |--------------------------------------------------------------------------
-    */
+    $porcentaje = $total > 0 ? round(($asistentes / $total) * 100, 1) : 0;
 
     respuesta([
-
-        'estado' =>
-            'OK',
-
-        'titulo' =>
-            'INGRESO AUTORIZADO',
-
-        'mensaje' =>
-            'La asistencia fue registrada correctamente.',
-
-        'hora' =>
-            $hora,
-
-        'colaborador' => [
-
-            'cod' =>
-                $colaborador['cod'],
-
-            'cedula' =>
-                $colaborador['cedula'],
-
-            'apellidos_nombres' =>
-                $colaborador['apellidos_nombres'],
-
-            'area' =>
-                $colaborador['area'],
-
-            'empresa' =>
-                $colaborador['empresa']
-
+        'estado' => 'OK',
+        'titulo' => 'INGRESO REGISTRADO',
+        'mensaje' => 'La asistencia fue registrada correctamente.',
+        'hora' => date('d/m/Y H:i:s'),
+        'evento' => [
+            'id' => $eventoId,
+            'nombre' => $evento['nombre']
         ],
-
+        'colaborador' => [
+            'cod' => $colaborador['cod'],
+            'cedula' => $colaborador['cedula'],
+            'apellidos_nombres' => $colaborador['apellidos_nombres'],
+            'area' => $colaborador['area'],
+            'empresa' => $colaborador['empresa']
+        ],
         'estadisticas' => [
-
-            'asistentes' =>
-                number_format(
-                    $asistentes
-                ),
-
-            'pendientes' =>
-                number_format(
-                    $pendientes
-                ),
-
-            'porcentaje' =>
-                $porcentaje
-
+            'total' => $total,
+            'asistentes' => $asistentes,
+            'pendientes' => max(0, $total - $asistentes),
+            'porcentaje' => $porcentaje
         ]
-
     ]);
-
-
-} catch (
-    Throwable $e
-) {
-
+} catch (Throwable $e) {
     respuesta([
-
-        'estado' =>
-            'ERROR',
-
-        'titulo' =>
-            'ERROR DEL SERVIDOR',
-
-        'mensaje' =>
-            $e->getMessage()
-
+        'estado' => 'ERROR',
+        'titulo' => 'ERROR DEL SERVIDOR',
+        'mensaje' => $e->getMessage()
     ], 500);
 }
