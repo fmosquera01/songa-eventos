@@ -32,9 +32,21 @@ if (str_starts_with($uri, '/admin/')) {
                     exit('Evento finalizado: la importación está bloqueada.');
                 }
 
-                if ($rutaRelativa === 'sorteo_api.php' && $accion !== 'bootstrap') {
-                    http_response_code(403);
-                    exit('Evento finalizado: el sorteo está en modo consulta.');
+                if ($rutaRelativa === 'sorteo_api.php') {
+                    if ($accion !== 'bootstrap') {
+                        http_response_code(403);
+                        exit('Evento finalizado: el sorteo está en modo consulta.');
+                    }
+
+                    // bootstrap debe ser realmente de consulta: el API crea el sorteo
+                    // si no existe, por lo que en un evento FINALIZADO solo se permite
+                    // consultar un sorteo que ya existía antes de finalizar el evento.
+                    $stmtSorteo = $dbGuard->prepare("SELECT id FROM sorteos WHERE evento_id = :evento_id LIMIT 1");
+                    $stmtSorteo->execute([':evento_id' => $eventoId]);
+                    if (!$stmtSorteo->fetchColumn()) {
+                        http_response_code(403);
+                        exit('Evento finalizado: no se puede crear un sorteo nuevo.');
+                    }
                 }
 
                 if (in_array($rutaRelativa, ['sorteo_crear.php', 'sorteo_premio.php', 'sorteo_resultado.php'], true)) {
