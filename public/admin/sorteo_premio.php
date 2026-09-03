@@ -3,170 +3,47 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../app/Database.php';
+require_once __DIR__ . '/../../app/Auth.php';
+require_once __DIR__ . '/../../app/EventoEstado.php';
+
+exigirAdmin();
 
 $db = Database::connection();
 
-$eventoId =
-    isset($_POST['evento_id'])
-        ? (int)$_POST['evento_id']
-        : 0;
+$eventoId = isset($_POST['evento_id']) ? (int)$_POST['evento_id'] : 0;
+$sorteoId = isset($_POST['sorteo_id']) ? (int)$_POST['sorteo_id'] : 0;
+$nombre = trim((string)($_POST['nombre'] ?? ''));
 
-$sorteoId =
-    isset($_POST['sorteo_id'])
-        ? (int)$_POST['sorteo_id']
-        : 0;
+if ($eventoId <= 0 || $sorteoId <= 0) die('Datos no válidos.');
+if ($nombre === '') die('Debe indicar el nombre del premio.');
 
-$nombre =
-    trim(
-        (string)(
-            $_POST['nombre']
-            ?? ''
-        )
-    );
+EventoEstado::exigirModificable($db, $eventoId);
 
-
-if (
-    $eventoId <= 0 ||
-    $sorteoId <= 0
-) {
-
-    die('Datos no válidos.');
-}
-
-
-if ($nombre === '') {
-
-    die('Debe indicar el nombre del premio.');
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| VERIFICAR SORTEO
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $db->prepare("
-    SELECT
-        id,
-        evento_id
-    FROM sorteos
-    WHERE id = :id
-      AND evento_id = :evento_id
-    LIMIT 1
-");
-
-$stmt->execute([
-
-    ':id' =>
-        $sorteoId,
-
-    ':evento_id' =>
-        $eventoId
-
-]);
-
+$stmt = $db->prepare("SELECT id, evento_id FROM sorteos WHERE id = :id AND evento_id = :evento_id LIMIT 1");
+$stmt->execute([':id' => $sorteoId, ':evento_id' => $eventoId]);
 $sorteo = $stmt->fetch();
 
-if (!$sorteo) {
+if (!$sorteo) die('Sorteo no encontrado.');
 
-    die('Sorteo no encontrado.');
-}
+$stmt = $db->prepare("SELECT COALESCE(MAX(posicion), 0) + 1 FROM sorteo_premios WHERE sorteo_id = :sorteo_id");
+$stmt->execute([':sorteo_id' => $sorteoId]);
+$posicion = (int)$stmt->fetchColumn();
 
-
-/*
-|--------------------------------------------------------------------------
-| SIGUIENTE POSICIÓN
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $db->prepare("
-    SELECT
-        COALESCE(
-            MAX(posicion),
-            0
-        ) + 1
-    FROM sorteo_premios
-    WHERE sorteo_id = :sorteo_id
-");
-
+$stmt = $db->prepare("INSERT INTO sorteo_premios (sorteo_id, nombre, posicion) VALUES (:sorteo_id, :nombre, :posicion)");
 $stmt->execute([
-    ':sorteo_id' => $sorteoId
+    ':sorteo_id' => $sorteoId,
+    ':nombre' => $nombre,
+    ':posicion' => $posicion
 ]);
-
-$posicion =
-    (int)$stmt->fetchColumn();
-
-
-/*
-|--------------------------------------------------------------------------
-| CREAR PREMIO
-|--------------------------------------------------------------------------
-*/
-
-$stmt = $db->prepare("
-    INSERT INTO sorteo_premios
-    (
-        sorteo_id,
-        nombre,
-        posicion
-    )
-    VALUES
-    (
-        :sorteo_id,
-        :nombre,
-        :posicion
-    )
-");
-
-$stmt->execute([
-
-    ':sorteo_id' =>
-        $sorteoId,
-
-    ':nombre' =>
-        $nombre,
-
-    ':posicion' =>
-        $posicion
-
-]);
-
-
-/*
-|--------------------------------------------------------------------------
-| ACTUALIZAR CANTIDAD
-|--------------------------------------------------------------------------
-*/
 
 $stmt = $db->prepare("
     UPDATE sorteos
     SET cantidad_ganadores = (
-        SELECT COUNT(*)
-        FROM sorteo_premios
-        WHERE sorteo_id = :sorteo_id
+        SELECT COUNT(*) FROM sorteo_premios WHERE sorteo_id = :sorteo_id
     )
     WHERE id = :id
 ");
+$stmt->execute([':sorteo_id' => $sorteoId, ':id' => $sorteoId]);
 
-$stmt->execute([
-
-    ':sorteo_id' =>
-        $sorteoId,
-
-    ':id' =>
-        $sorteoId
-
-]);
-
-
-header(
-    'Location: sorteo.php?evento_id=' .
-    $eventoId .
-    '&ok=' .
-    urlencode(
-        'Premio agregado correctamente.'
-    )
-);
-
+header('Location: sorteo.php?evento_id=' . $eventoId . '&ok=' . urlencode('Premio agregado correctamente.'));
 exit;
