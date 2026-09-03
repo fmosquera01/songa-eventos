@@ -1,0 +1,11 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/../../app/Database.php';
+require_once __DIR__ . '/../../app/Auth.php';
+require_once __DIR__ . '/../../app/EventoEstado.php';
+exigirAdmin();
+$eventoId=(int)($_GET['evento_id']??0);
+$db=Database::connection();
+$evento=EventoEstado::exigirModificable($db,$eventoId);
+?>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nuevo colaborador</title><style>body{font-family:Arial;background:#f3f4f6;margin:0}.card{max-width:650px;margin:40px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 2px 10px #0001}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.campo label{display:block;font-weight:bold;font-size:13px;margin-bottom:5px}.campo input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:7px;box-sizing:border-box}.btn{display:inline-block;padding:11px 18px;border:0;border-radius:7px;text-decoration:none;cursor:pointer;font-weight:bold}.primary{background:#2563eb;color:#fff}.secondary{background:#6b7280;color:#fff}@media(max-width:650px){.grid{grid-template-columns:1fr}}</style></head><body><div class="card"><h1>Nuevo colaborador</h1><p>Evento: <strong><?=htmlspecialchars($evento['nombre'])?></strong></p><form method="post" action="colaborador_guardar.php"><input type="hidden" name="evento_id" value="<?=$eventoId?>"><div class="grid"><div class="campo"><label>Código *</label><input name="cod" required maxlength="100"></div><div class="campo"><label>Cédula</label><input name="cedula" maxlength="30"></div><div class="campo"><label>Apellidos y nombres *</label><input name="apellidos_nombres" required maxlength="200"></div><div class="campo"><label>Área</label><input name="area" maxlength="150"></div><div class="campo"><label>Empresa</label><input name="empresa" maxlength="150"></div><div class="campo"><label>Estado</label><input name="estado" value="ACTIVO" maxlength="30"></div></div><br><button class="btn primary">Guardar</button> <a class="btn secondary" href="colaboradores.php?evento_id=<?=$eventoId?>">Cancelar</a></form></div></body></html>
