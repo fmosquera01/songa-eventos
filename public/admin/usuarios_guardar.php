@@ -14,7 +14,7 @@ try {
     if(!in_array($rol,['ADMIN','OPERADOR'],true)) throw new RuntimeException('Rol no válido.');
     $db=Database::connection();
     $hash=password_hash($password,PASSWORD_DEFAULT);
-    $stmt=$db->prepare("INSERT INTO usuarios (nombre, usuario_login, password_hash, rol, activo) VALUES (:nombre,:login,:hash,:rol,1)");
-    $stmt->execute([':nombre'=>$nombre,':login'=>$login,':hash'=>$hash,':rol'=>$rol]);
+    $stmt=$db->prepare("INSERT INTO usuarios (usuario, nombre, usuario_login, password_hash, rol, activo) VALUES (:usuario,:nombre,:login,:hash,:rol,1)");
+    $stmt->execute([':usuario'=>$login,':nombre'=>$nombre,':login'=>$login,':hash'=>$hash,':rol'=>$rol]);
     header('Location: usuarios.php?ok='.urlencode('Usuario creado correctamente.')); exit;
 } catch(Throwable $e) { header('Location: usuarios.php?error='.urlencode($e->getMessage())); exit; }
