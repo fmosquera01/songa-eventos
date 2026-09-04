@@ -7,7 +7,8 @@ exigirAdmin();
 $eventoId=(int)($_GET['evento_id']??0);if($eventoId<=0)die('Evento no válido.');
 $db=Database::connection();$evento=EventoEstado::exigirEvento($db,$eventoId);$finalizado=EventoEstado::estaFinalizado($evento);
 $buscar=trim((string)($_GET['buscar']??''));$porPagina=50;$pagina=max(1,(int)($_GET['pagina']??1));
-$where='WHERE ec.evento_id=:evento_id';$params=[':evento_id'=>$eventoId];if($buscar!==''){$where.=" AND (ec.cod LIKE :buscar OR ec.cedula LIKE :buscar OR ec.apellidos_nombres LIKE :buscar OR ec.area LIKE :buscar OR ec.empresa LIKE :buscar)";$params[':buscar']='%'.$buscar.'%';}
+$where='WHERE ec.evento_id=:evento_id';$params=[':evento_id'=>$eventoId];
+if($buscar!==''){$where.=" AND (ec.cod LIKE :b1 OR ec.cedula LIKE :b2 OR ec.apellidos_nombres LIKE :b3 OR ec.area LIKE :b4 OR ec.empresa LIKE :b5)";$like='%'.$buscar.'%';$params[':b1']=$like;$params[':b2']=$like;$params[':b3']=$like;$params[':b4']=$like;$params[':b5']=$like;}
 $st=$db->prepare("SELECT COUNT(*) FROM evento_colaboradores ec $where");$st->execute($params);$total=(int)$st->fetchColumn();$paginas=max(1,(int)ceil($total/$porPagina));$pagina=min($pagina,$paginas);$offset=($pagina-1)*$porPagina;
 $sql="SELECT ec.id,ec.cod,ec.cedula,ec.apellidos_nombres,ec.area,ec.empresa,ec.estado,CASE WHEN EXISTS(SELECT 1 FROM registros r WHERE r.evento_id=ec.evento_id AND r.colaborador_id=ec.id AND r.tipo_registro='ASISTENCIA') THEN 1 ELSE 0 END asistio FROM evento_colaboradores ec $where ORDER BY ec.apellidos_nombres LIMIT :lim OFFSET :off";$st=$db->prepare($sql);foreach($params as $k=>$v)$st->bindValue($k,$v);$st->bindValue(':lim',$porPagina,PDO::PARAM_INT);$st->bindValue(':off',$offset,PDO::PARAM_INT);$st->execute();$rows=$st->fetchAll(PDO::FETCH_ASSOC);
 $qs=function($p)use($eventoId,$buscar){return '?'.http_build_query(array_filter(['evento_id'=>$eventoId,'pagina'=>$p,'buscar'=>$buscar],fn($v)=>$v!==''));};
