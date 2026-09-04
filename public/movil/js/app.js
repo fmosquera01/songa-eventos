@@ -3,10 +3,10 @@
   const form = document.getElementById('formAsistencia');
   const result = document.getElementById('resultado');
   const video = document.getElementById('video');
-  const cameraWrap = document.getElementById('cameraWrap');
   const cameraMessage = document.getElementById('cameraMessage');
   const frame = document.querySelector('.scan-frame');
   const btnCamera = document.getElementById('btnCamera');
+  const btnInstall = document.getElementById('btnInstall');
   const asistentes = document.getElementById('asistentes');
   const ultimaHora = document.getElementById('ultimaHora');
   const connectionDot = document.getElementById('connectionDot');
@@ -14,6 +14,9 @@
   let scanning = false;
   let detector = null;
   let processing = false;
+  let deferredInstallPrompt = null;
+  let lastScanned = '';
+  let lastScannedAt = 0;
 
   function escapeHtml(value) {
     const div = document.createElement('div');
@@ -70,18 +73,28 @@
   form.addEventListener('submit', e => { e.preventDefault(); registrar(input.value); });
 
   async function startCamera() {
+    if (!window.isSecureContext) {
+      cameraMessage.textContent = 'La cámara requiere HTTPS. Abre esta aplicación usando https://';
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia) {
-      cameraMessage.textContent = 'Este navegador no permite acceder a la cámara.';
+      cameraMessage.textContent = 'El navegador no expone la cámara. Verifica que estés usando Chrome/Edge actualizado y HTTPS.';
       return;
     }
     if (!('BarcodeDetector' in window)) {
-      cameraMessage.textContent = 'El lector de códigos de este navegador no está disponible. Usa el campo manual o Chrome actualizado.';
+      cameraMessage.textContent = 'Este navegador no tiene BarcodeDetector. Usa Chrome actualizado o el ingreso manual.';
       return;
     }
     try {
-      detector = new BarcodeDetector({formats:['code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','qr_code','itf','codabar']});
+      let formats = ['code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','qr_code','itf','codabar'];
+      if (typeof BarcodeDetector.getSupportedFormats === 'function') {
+        const supported = await BarcodeDetector.getSupportedFormats();
+        formats = formats.filter(f => supported.includes(f));
+      }
+      detector = formats.length ? new BarcodeDetector({formats}) : new BarcodeDetector();
     } catch (_) {
-      detector = new BarcodeDetector();
+      try { detector = new BarcodeDetector(); }
+      catch (_) { cameraMessage.textContent = 'No se pudo inicializar el lector de códigos en este navegador.'; return; }
     }
     try {
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -95,7 +108,10 @@
       scanning = true;
       scanLoop();
     } catch (error) {
-      cameraMessage.textContent = 'No se pudo activar la cámara. Revisa el permiso del navegador.';
+      if (error && error.name === 'NotAllowedError') cameraMessage.textContent = 'Permiso de cámara denegado. En Chrome: candado → Cámara → Permitir y vuelve a cargar.';
+      else if (error && error.name === 'NotFoundError') cameraMessage.textContent = 'No se encontró una cámara disponible.';
+      else if (error && error.name === 'NotReadableError') cameraMessage.textContent = 'La cámara está siendo usada por otra aplicación.';
+      else cameraMessage.textContent = `No se pudo activar la cámara (${error?.name || 'error'}).`;
     }
   }
 
@@ -105,9 +121,12 @@
       const codes = await detector.detect(video);
       if (codes.length && !processing) {
         const value = (codes[0].rawValue || '').trim();
-        if (value) {
+        const now = Date.now();
+        if (value && !(value === lastScanned && now - lastScannedAt < 1500)) {
+          lastScanned = value;
+          lastScannedAt = now;
           await registrar(value);
-          await new Promise(r => setTimeout(r, 450));
+          await new Promise(r => setTimeout(r, 300));
         }
       }
     } catch (_) {}
@@ -115,8 +134,29 @@
   }
 
   btnCamera.addEventListener('click', startCamera);
+
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    if (btnInstall) btnInstall.hidden = false;
+  });
+
+  if (btnInstall) {
+    btnInstall.addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      btnInstall.hidden = true;
+    });
+  }
+
+  window.addEventListener('appinstalled', () => {
+    if (btnInstall) btnInstall.hidden = true;
+  });
   window.addEventListener('online', () => connectionDot.classList.remove('offline'));
   window.addEventListener('offline', () => connectionDot.classList.add('offline'));
+  document.addEventListener('visibilitychange', () => { if (document.hidden && stream) stream.getTracks().forEach(track => track.stop()); });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   input.focus();
