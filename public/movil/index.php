@@ -35,7 +35,7 @@ if (!$evento) {
 <body>
 <header class="topbar">
   <div><div class="brand">Songa</div><div class="event-name"><?= htmlspecialchars((string)$evento['nombre']) ?></div></div>
-  <div class="status-dot" id="connectionDot" title="Conectado"></div>
+  <div class="top-actions"><div class="status-dot" id="connectionDot" title="Conectado"></div><button class="install-btn" id="btnInstall" type="button" hidden>INSTALAR</button></div>
 </header>
 
 <main class="app">
