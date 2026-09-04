@@ -38,9 +38,6 @@ if (str_starts_with($uri, '/admin/')) {
                         exit('Evento finalizado: el sorteo está en modo consulta.');
                     }
 
-                    // bootstrap debe ser realmente de consulta: el API crea el sorteo
-                    // si no existe, por lo que en un evento FINALIZADO solo se permite
-                    // consultar un sorteo que ya existía antes de finalizar el evento.
                     $stmtSorteo = $dbGuard->prepare("SELECT id FROM sorteos WHERE evento_id = :evento_id LIMIT 1");
                     $stmtSorteo->execute([':evento_id' => $eventoId]);
                     if (!$stmtSorteo->fetchColumn()) {
@@ -54,8 +51,6 @@ if (str_starts_with($uri, '/admin/')) {
                     exit('Evento finalizado: no se pueden modificar premios ni sorteos.');
                 }
 
-                // En un evento FINALIZADO no se muestra el acceso a registrar asistencia.
-                // Ese enlace lleva al módulo que trabaja con el evento ACTIVO.
                 if ($rutaRelativa === 'asistencia.php') {
                     ob_start(static function (string $html): string {
                         $patron = '~<a\b[^>]*href=["\'][^"\']*\.\./operador/registro\.php(?:\?[^"\']*)?["\'][^>]*>.*?</a>~is';
@@ -73,5 +68,20 @@ if (str_starts_with($uri, '/admin/')) {
 
 if (str_starts_with($uri, '/operador/')) {
     exigirLogin();
+
+    if ($uri === '/operador/registro.php') {
+        ob_start(static function (string $html): string {
+            $boton = <<<'HTML'
+<a href="/logout.php" style="position:fixed;top:16px;right:16px;z-index:9999;background:#dc2626;color:#fff;text-decoration:none;padding:11px 18px;border-radius:9px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.20);">Cerrar sesión</a>
+HTML;
+
+            if (stripos($html, '</body>') !== false) {
+                return str_ireplace('</body>', $boton . "\n</body>", $html);
+            }
+
+            return $html . $boton;
+        });
+    }
+
     return;
 }
