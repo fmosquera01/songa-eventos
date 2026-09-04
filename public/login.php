@@ -22,9 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $db = Database::connection();
             $stmt = $db->prepare("
-                SELECT id, nombre, usuario_login, password_hash, rol, activo
+                SELECT id, nombre, usuario, usuario_login, password_hash, rol, activo
                 FROM usuarios
-                WHERE usuario_login = :usuario
+                WHERE (usuario_login = :usuario OR usuario = :usuario)
                 LIMIT 1
             ");
             $stmt->execute([':usuario' => $usuario]);
@@ -44,9 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'El usuario no tiene un rol válido.';
                 } else {
                     session_regenerate_id(true);
+
                     $_SESSION['usuario_id'] = (int)$registro['id'];
                     $_SESSION['usuario_nombre'] = (string)$registro['nombre'];
-                    $_SESSION['usuario_login'] = (string)$registro['usuario_login'];
+                    $_SESSION['usuario_login'] = (string)($registro['usuario_login'] ?: $registro['usuario']);
                     $_SESSION['usuario_rol'] = $rol;
 
                     header('Location: ' . ($rol === 'ADMIN' ? '/admin/eventos.php' : '/operador/registro.php'));
@@ -54,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } catch (Throwable $e) {
-            $error = 'No se pudo iniciar sesión: ' . $e->getMessage();
+            $error = 'No se pudo iniciar sesión. Verifique la configuración de la base de datos.';
         }
     }
 }
