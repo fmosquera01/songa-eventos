@@ -1,0 +1,12 @@
+{
+  "name": "Songa - Control de Asistencia",
+  "short_name": "Songa Asistencia",
+  "start_url": "./index.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "description": "Control móvil de asistencia para eventos Songa",
+  "icons": []
+}
