@@ -24,10 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare("
                 SELECT id, nombre, usuario, usuario_login, password_hash, rol, activo
                 FROM usuarios
-                WHERE (usuario_login = :usuario OR usuario = :usuario)
+                WHERE usuario_login = :usuario_login OR usuario = :usuario
                 LIMIT 1
             ");
-            $stmt->execute([':usuario' => $usuario]);
+            $stmt->execute([
+                ':usuario_login' => $usuario,
+                ':usuario' => $usuario,
+            ]);
             $registro = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (
@@ -55,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } catch (Throwable $e) {
+            error_log('Songa Event Control - Error de inicio de sesión: ' . $e->getMessage());
             $error = 'No se pudo iniciar sesión. Verifique la configuración de la base de datos.';
         }
     }
