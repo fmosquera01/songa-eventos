@@ -2,6 +2,33 @@
 
 declare(strict_types=1);
 
+/*
+ * Algunas páginas antiguas del sistema todavía llaman directamente a
+ * session_start(). Auth.php inicia la sesión cuando corresponde y silencia
+ * únicamente el Notice generado por una segunda llamada dentro de la misma
+ * petición. No se ocultan otros errores de PHP.
+ */
+set_error_handler(
+    static function (
+        int $severity,
+        string $message,
+        string $file,
+        int $line
+    ): bool {
+        if (
+            $severity === E_NOTICE
+            && str_contains(
+                $message,
+                'session_start(): Ignoring session_start() because a session is already active'
+            )
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+);
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
