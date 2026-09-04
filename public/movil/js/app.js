@@ -58,6 +58,7 @@
     try {
       const body = new URLSearchParams({ identificador: valor.trim() });
       const response = await fetch(window.PWA_CONFIG.registrarUrl, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body, credentials:'same-origin', cache:'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       showResult(data);
       connectionDot.classList.remove('offline');
@@ -74,17 +75,19 @@
 
   async function startCamera() {
     if (!window.isSecureContext) {
-      cameraMessage.textContent = 'La cámara requiere HTTPS. Abre esta aplicación usando https://';
+      cameraMessage.textContent = 'La cámara requiere HTTPS. Abre la aplicación con https://';
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      cameraMessage.textContent = 'El navegador no expone la cámara. Verifica que estés usando Chrome/Edge actualizado y HTTPS.';
+      cameraMessage.textContent = 'La cámara no está disponible. Verifica HTTPS y usa Chrome actualizado.';
       return;
     }
     if (!('BarcodeDetector' in window)) {
-      cameraMessage.textContent = 'Este navegador no tiene BarcodeDetector. Usa Chrome actualizado o el ingreso manual.';
+      cameraMessage.textContent = 'El lector de códigos no está disponible en este navegador. Puedes usar el ingreso manual.';
       return;
     }
+    btnCamera.disabled = true;
+    cameraMessage.textContent = 'Preparando cámara…';
     try {
       let formats = ['code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','qr_code','itf','codabar'];
       if (typeof BarcodeDetector.getSupportedFormats === 'function') {
@@ -94,7 +97,7 @@
       detector = formats.length ? new BarcodeDetector({formats}) : new BarcodeDetector();
     } catch (_) {
       try { detector = new BarcodeDetector(); }
-      catch (_) { cameraMessage.textContent = 'No se pudo inicializar el lector de códigos en este navegador.'; return; }
+      catch (_) { cameraMessage.textContent = 'No se pudo iniciar el lector de códigos.'; btnCamera.disabled = false; return; }
     }
     try {
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -104,13 +107,14 @@
       frame.style.display = 'block';
       cameraMessage.style.display = 'none';
       btnCamera.textContent = 'CÁMARA ACTIVA';
-      btnCamera.disabled = true;
       scanning = true;
       scanLoop();
     } catch (error) {
-      if (error && error.name === 'NotAllowedError') cameraMessage.textContent = 'Permiso de cámara denegado. En Chrome: candado → Cámara → Permitir y vuelve a cargar.';
-      else if (error && error.name === 'NotFoundError') cameraMessage.textContent = 'No se encontró una cámara disponible.';
-      else if (error && error.name === 'NotReadableError') cameraMessage.textContent = 'La cámara está siendo usada por otra aplicación.';
+      btnCamera.disabled = false;
+      if (error?.name === 'NotAllowedError') cameraMessage.textContent = 'Permiso de cámara denegado. En Chrome: candado → Permisos → Cámara → Permitir y recarga.';
+      else if (error?.name === 'NotFoundError') cameraMessage.textContent = 'No se encontró una cámara disponible.';
+      else if (error?.name === 'NotReadableError') cameraMessage.textContent = 'La cámara está siendo usada por otra aplicación.';
+      else if (error?.name === 'SecurityError') cameraMessage.textContent = 'El navegador bloqueó la cámara por seguridad. Verifica que la dirección sea HTTPS.';
       else cameraMessage.textContent = `No se pudo activar la cámara (${error?.name || 'error'}).`;
     }
   }
@@ -151,12 +155,22 @@
     });
   }
 
-  window.addEventListener('appinstalled', () => {
-    if (btnInstall) btnInstall.hidden = true;
-  });
+  window.addEventListener('appinstalled', () => { if (btnInstall) btnInstall.hidden = true; });
   window.addEventListener('online', () => connectionDot.classList.remove('offline'));
   window.addEventListener('offline', () => connectionDot.classList.add('offline'));
-  document.addEventListener('visibilitychange', () => { if (document.hidden && stream) stream.getTracks().forEach(track => track.stop()); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && stream) {
+      scanning = false;
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+      btnCamera.disabled = false;
+      btnCamera.textContent = 'ACTIVAR CÁMARA';
+      video.style.display = 'none';
+      frame.style.display = 'none';
+      cameraMessage.style.display = 'block';
+      cameraMessage.textContent = 'Pulsa «Activar cámara»';
+    }
+  });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   input.focus();
