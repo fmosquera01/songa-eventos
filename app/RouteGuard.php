@@ -53,6 +53,15 @@ if (str_starts_with($uri, '/admin/')) {
                     http_response_code(403);
                     exit('Evento finalizado: no se pueden modificar premios ni sorteos.');
                 }
+
+                // En un evento FINALIZADO no se muestra el acceso a registrar asistencia.
+                // Ese enlace lleva al módulo que trabaja con el evento ACTIVO.
+                if ($rutaRelativa === 'asistencia.php') {
+                    ob_start(static function (string $html): string {
+                        $patron = '~<a\b[^>]*href=["\'][^"\']*\.\./operador/registro\.php(?:\?[^"\']*)?["\'][^>]*>.*?</a>~is';
+                        return (string)preg_replace($patron, '', $html);
+                    });
+                }
             }
         } catch (Throwable $e) {
             // Las páginas ejecutan sus propias validaciones de base de datos.
