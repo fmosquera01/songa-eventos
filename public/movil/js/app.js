@@ -52,11 +52,16 @@
   }
 
   async function registrar(valor) {
-    if (processing || !valor.trim()) return;
+    valor = valor.trim();
+    if (processing || !valor) return;
+
     processing = true;
-    input.value = '';
+    // Dejamos el codigo visible para que el operador pueda comprobar exactamente
+    // que fue leido, especialmente cuando el codigo no existe.
+    input.value = valor;
+
     try {
-      const body = new URLSearchParams({ identificador: valor.trim() });
+      const body = new URLSearchParams({ identificador: valor });
       const response = await fetch(window.PWA_CONFIG.registrarUrl, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body, credentials:'same-origin', cache:'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
@@ -67,7 +72,9 @@
       connectionDot.classList.add('offline');
     } finally {
       processing = false;
-      input.focus();
+      // No hacemos focus() aqui: asi el teclado no aparece automaticamente
+      // despues de un escaneo. El operador puede tocar el campo si necesita
+      // escribir manualmente.
     }
   }
 
@@ -129,6 +136,8 @@
         if (value && !(value === lastScanned && now - lastScannedAt < 1500)) {
           lastScanned = value;
           lastScannedAt = now;
+          // Mostrar inmediatamente lo que realmente leyó la cámara.
+          input.value = value;
           await registrar(value);
           await new Promise(r => setTimeout(r, 300));
         }
@@ -173,5 +182,6 @@
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  input.focus();
+  // No enfocamos el campo al cargar: el teclado debe aparecer solamente
+  // cuando el operador toque el campo de código/cédula.
 })();
