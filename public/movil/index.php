@@ -31,7 +31,7 @@ $evento = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$evento) {
     http_response_code(409);
     ?>
-    <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin evento activo</title><style>body{font-family:Arial;background:#f1f5f9;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;padding:30px;border-radius:18px;text-align:center;max-width:420px;box-shadow:0 8px 30px #0001}h1{font-size:24px}</style></head><body><div class="card"><h1>Sin evento activo</h1><p>No existe actualmente un evento ACTIVO para registrar asistencia.</p></div></body></html>
+    <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin evento activo</title><style>body{font-family:Arial;background:#f1f5f9;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;padding:30px;border-radius:18px;text-align:center;max-width:420px;box-shadow:0 8px 30px #0001}h1{font-size:24px}</style></head><body><div class="card"><h1>Sin evento activo</h1><p>No existe actualmente un evento ACTIVO para registrar asistencia.</p><a href="../logout.php?redirect=movil">Cerrar sesión</a></div></body></html>
     <?php
     exit;
 }
@@ -52,7 +52,7 @@ if (!$evento) {
 <body>
 <header class="topbar">
   <div><div class="brand">Songa</div><div class="event-name"><?= htmlspecialchars((string)$evento['nombre']) ?></div></div>
-  <div class="top-actions"><div class="status-dot" id="connectionDot" title="Conectado"></div><button class="install-btn" id="btnInstall" type="button" hidden>INSTALAR</button></div>
+  <div class="top-actions"><div class="status-dot" id="connectionDot" title="Conectado"></div><button class="install-btn" id="btnInstall" type="button" hidden>INSTALAR</button><a class="logout-btn" href="../logout.php?redirect=movil">SALIR</a></div>
 </header>
 
 <main class="app">
