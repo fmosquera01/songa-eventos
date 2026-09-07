@@ -5,7 +5,24 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../app/Database.php';
 require_once __DIR__ . '/../../app/Auth.php';
 
-exigirAdminOOperador();
+function dispositivoMovil(): bool
+{
+    $ua = strtolower((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    return (bool)preg_match('/android|iphone|ipad|ipod|mobile|windows phone/', $ua);
+}
+
+if (!dispositivoMovil()) {
+    http_response_code(403);
+    ?>
+    <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acceso no permitido</title><style>body{font-family:Arial;background:#f1f5f9;display:grid;place-items:center;min-height:100vh;margin:0}.card{background:#fff;padding:30px;border-radius:18px;text-align:center;max-width:420px;box-shadow:0 8px 30px #0001}h1{font-size:24px}</style></head><body><div class="card"><h1>Acceso no permitido</h1><p>Este módulo está disponible únicamente desde dispositivos móviles.</p></div></body></html>
+    <?php
+    exit;
+}
+
+if (!usuarioAutenticado()) {
+    header('Location: ../login.php?redirect=movil');
+    exit;
+}
 
 $db = Database::connection();
 $stmt = $db->query("SELECT id, nombre, fecha_evento FROM eventos WHERE estado = 'ACTIVO' ORDER BY id ASC LIMIT 1");
@@ -55,7 +72,7 @@ if (!$evento) {
 
     <div class="or"><span>o ingresar manualmente</span></div>
     <form id="formAsistencia" autocomplete="off">
-      <input id="identificador" type="text" inputmode="numeric" placeholder="Código o cédula" autofocus>
+      <input id="identificador" type="text" inputmode="numeric" placeholder="Código o cédula">
       <button class="secondary" type="submit">REGISTRAR</button>
     </form>
   </section>
