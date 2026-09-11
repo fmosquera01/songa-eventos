@@ -480,7 +480,7 @@ Control de asistencia
 </div>
 
 <div>
-
+<a href="../logout.php?redirect=movil">Cerrar sesión</a>
 <small>
 Evento #<?= $eventoId ?>
 </small>
