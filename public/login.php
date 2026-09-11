@@ -5,8 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/Database.php';
 require_once __DIR__ . '/../app/Auth.php';
 
+$destino = (($_GET['redirect'] ?? '') === 'movil') ? '/movil/' : '';
+
 if (usuarioAutenticado()) {
-    header('Location: ' . (usuarioEsAdmin() ? '/admin/eventos.php' : '/operador/registro.php'));
+    header('Location: ' . ($destino !== '' ? $destino : (usuarioEsAdmin() ? '/admin/eventos.php' : '/operador/registro.php')));
     exit;
 }
 
@@ -15,6 +17,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $usuario = trim((string)($_POST['usuario'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
+    $destinoPost = (($_POST['redirect'] ?? '') === 'movil') ? '/movil/' : '';
 
     if ($usuario === '' || $password === '') {
         $error = 'Ingrese usuario y contraseña.';
@@ -53,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['usuario_login'] = (string)($registro['usuario_login'] ?: $registro['usuario']);
                     $_SESSION['usuario_rol'] = $rol;
 
-                    header('Location: ' . ($rol === 'ADMIN' ? '/admin/eventos.php' : '/operador/registro.php'));
+                    header('Location: ' . ($destinoPost !== '' ? $destinoPost : ($rol === 'ADMIN' ? '/admin/eventos.php' : '/operador/registro.php')));
                     exit;
                 }
             }
@@ -81,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
     <form method="POST" autocomplete="off">
+        <input type="hidden" name="redirect" value="<?= htmlspecialchars((string)($_GET['redirect'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
         <div class="campo">
             <label for="usuario">Usuario</label>
             <input id="usuario" name="usuario" type="text" maxlength="100" required autofocus>
