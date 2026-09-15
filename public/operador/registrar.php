@@ -23,8 +23,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $identificador = trim((string)($_POST['identificador'] ?? ''));
 
 // Algunos lectores de tarjetas envían el código con un prefijo "$".
-// La base de datos almacena únicamente el código, por lo que se elimina
-// uno o varios "$" iniciales antes de realizar la búsqueda.
 $identificador = ltrim($identificador, '$');
 $identificador = trim($identificador);
 
@@ -67,13 +65,9 @@ try {
 
     $colaboradorId = (int)$colaborador['id'];
 
-    if ((bool)$evento['validar_estado'] && $colaborador['estado'] !== null && trim((string)$colaborador['estado']) !== '') {
-        $estado = mb_strtoupper(trim((string)$colaborador['estado']), 'UTF-8');
-        $estadosInactivos = ['INACTIVO', 'INACTIVA', 'BAJA', 'CESADO', 'CESADA', 'RETIRADO', 'RETIRADA', 'NO ACTIVO', 'NO ACTIVA'];
-        if (in_array($estado, $estadosInactivos, true)) {
-            respuesta(['estado' => 'ERROR', 'titulo' => 'COLABORADOR INACTIVO', 'mensaje' => 'El colaborador figura como inactivo en el listado.', 'colaborador' => ['cod' => $colaborador['cod'], 'cedula' => $colaborador['cedula'], 'apellidos_nombres' => $colaborador['apellidos_nombres'], 'area' => $colaborador['area']]]);
-        }
-    }
+    // IMPORTANTE: el estado NO bloquea la asistencia.
+    // Los colaboradores INACTIVOS pueden ingresar normalmente.
+    // El estado se utiliza únicamente para excluirlos del sorteo.
 
     $stmt = $db->prepare("SELECT id, fecha_hora, metodo FROM registros WHERE evento_id = :evento_id AND colaborador_id = :colaborador_id AND tipo_registro = 'ASISTENCIA' ORDER BY fecha_hora ASC LIMIT 1");
     $stmt->execute([':evento_id' => $eventoId, ':colaborador_id' => $colaboradorId]);
