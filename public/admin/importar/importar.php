@@ -8,7 +8,6 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../app/Database.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 
 
@@ -622,25 +621,61 @@ try {
 
     /*
     |--------------------------------------------------------------------------
-    | INSERT CAMPOS ADICIONALES
+    | INSERT CAMPOS ADICIONALES (POR LOTES)
     |--------------------------------------------------------------------------
+    |
+    | En vez de un INSERT por cada valor adicional (N inserts por fila),
+    | se acumulan y se insertan en bloques de $TAMANO_LOTE_VALORES filas
+    | en una sola sentencia multi-VALUES. Esto reduce drásticamente el
+    | número de round-trips a la base de datos.
+    |
     */
 
-    $stmtValor =
-        $db->prepare("
-            INSERT INTO colaborador_campos
-            (
-                colaborador_id,
-                campo_id,
-                valor_texto
-            )
-            VALUES
-            (
-                :colaborador_id,
-                :campo_id,
-                :valor_texto
-            )
-        ");
+    $valoresPendientes = [];
+
+    $TAMANO_LOTE_VALORES = 500;
+
+
+    $insertarLoteValores =
+        function () use (
+            $db,
+            &$valoresPendientes
+        ): void {
+
+            if (empty($valoresPendientes)) {
+                return;
+            }
+
+            $placeholders =
+                implode(
+                    ',',
+                    array_fill(
+                        0,
+                        count($valoresPendientes),
+                        '(?, ?, ?)'
+                    )
+                );
+
+            $sql =
+                "INSERT INTO colaborador_campos
+                    (colaborador_id, campo_id, valor_texto)
+                 VALUES $placeholders";
+
+            $stmtLote =
+                $db->prepare($sql);
+
+            $params = [];
+
+            foreach ($valoresPendientes as $valor) {
+                $params[] = $valor[0];
+                $params[] = $valor[1];
+                $params[] = $valor[2];
+            }
+
+            $stmtLote->execute($params);
+
+            $valoresPendientes = [];
+        };
 
 
     /*
@@ -755,45 +790,59 @@ try {
         |--------------------------------------------------------------------------
         */
 
+        /*
+        |--------------------------------------------------------------------------
+        | LEER TODO EL BLOQUE DE UNA SOLA VEZ (mucho más rápido que celda por celda)
+        |--------------------------------------------------------------------------
+        */
+
+        $columnCount =
+            count($headers);
+
+
+        $rangoBloque =
+            "A{$inicio}:{$highestColumn}{$fin}";
+
+
+        $datosBloque =
+            $sheet->rangeToArray(
+                $rangoBloque,
+                '',    // valor por defecto para celdas vacías
+                true,  // calcular fórmulas
+                true,  // formatear datos (fechas/números como texto visible)
+                false  // índices 0-based secuenciales, no por referencia de celda
+            );
+
+
         for (
             $row = $inicio;
             $row <= $fin;
             $row++
         ) {
 
-            $fila = [];
-
-
             /*
             |--------------------------------------------------------------------------
-            | LEER COLUMNAS
+            | FILA CRUDA DEL BLOQUE
             |--------------------------------------------------------------------------
             */
 
-            $columnCount =
-                count($headers);
+            $filaCruda =
+                $datosBloque[$row - $inicio]
+                ?? [];
+
+
+            $fila = [];
 
 
             for (
-                $column = 1;
-                $column <= $columnCount;
+                $column = 0;
+                $column < $columnCount;
                 $column++
             ) {
 
-                $letra =
-                    Coordinate::stringFromColumnIndex(
-                        $column
-                    );
-
-
-                $celda =
-                    $sheet->getCell(
-                        $letra . $row
-                    );
-
-
                 $valor =
-                    $celda->getFormattedValue();
+                    $filaCruda[$column]
+                    ?? '';
 
 
                 if (
@@ -1156,18 +1205,19 @@ try {
                 }
 
 
-                $stmtValor->execute([
+                $valoresPendientes[] = [
+                    $colaboradorId,
+                    $campo['id'],
+                    $valor
+                ];
 
-                    ':colaborador_id' =>
-                        $colaboradorId,
 
-                    ':campo_id' =>
-                        $campo['id'],
-
-                    ':valor_texto' =>
-                        $valor
-
-                ]);
+                if (
+                    count($valoresPendientes)
+                    >= $TAMANO_LOTE_VALORES
+                ) {
+                    $insertarLoteValores();
+                }
             }
 
 
@@ -1200,6 +1250,15 @@ try {
 
         gc_collect_cycles();
     }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | INSERTAR RESTO DE VALORES PENDIENTES
+    |--------------------------------------------------------------------------
+    */
+
+    $insertarLoteValores();
 
 
     /*
