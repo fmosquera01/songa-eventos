@@ -87,6 +87,15 @@ window.PWA_CONFIG = {
   registrarUrl: '../operador/registrar.php'
 };
 </script>
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .then(reg => console.log('Service Worker registrado correctamente:', reg.scope))
+        .catch(err => console.error('Error al registrar Service Worker:', err));
+    });
+  }
+</script>
 <script src="js/app.js"></script>
 </body>
 </html>
