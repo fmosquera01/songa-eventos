@@ -46,6 +46,7 @@ if (!$evento) {
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="css/app.css">
 <title>Control de asistencia</title>
 </head>
@@ -87,15 +88,6 @@ window.PWA_CONFIG = {
   registrarUrl: '../operador/registrar.php'
 };
 </script>
-    <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { scope: './' })
-        .then(reg => console.log('Service Worker registrado correctamente:', reg.scope))
-        .catch(err => console.error('Error al registrar Service Worker:', err));
-    });
-  }
-</script>
-<script src="js/app.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
