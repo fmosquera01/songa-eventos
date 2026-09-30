@@ -8,6 +8,19 @@ exigirAdmin();
 $db = Database::connection();
 $mensaje = trim((string)($_GET['ok'] ?? ''));
 $error = trim((string)($_GET['error'] ?? ''));
+$claveId = (int)($_GET['clave'] ?? 0);
+$usuarioClave = null;
+
+if ($claveId > 0) {
+    $stmt = $db->prepare("SELECT id, nombre, usuario_login, rol FROM usuarios WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $claveId]);
+    $usuarioClave = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$usuarioClave) {
+        $error = 'Usuario no encontrado.';
+        $claveId = 0;
+    }
+}
 
 $stmt = $db->query("SELECT id, nombre, usuario_login, rol, activo, creado_en FROM usuarios ORDER BY id ASC");
 $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -19,7 +32,7 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Usuarios - Songa Event Control</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f6f9;color:#1f2937}.navbar{background:#1f2937;color:#fff;padding:16px 30px;display:flex;justify-content:space-between;align-items:center}.navbar h1{margin:0;font-size:20px}.container{max-width:1100px;margin:30px auto;padding:0 20px}.card{background:#fff;border-radius:10px;padding:22px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}h2{margin-top:0}.form-grid{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:12px}.campo label{display:block;font-size:13px;font-weight:bold;margin-bottom:6px}.campo input,.campo select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:7px}.btn{display:inline-block;padding:10px 15px;border:0;border-radius:7px;text-decoration:none;cursor:pointer;font-weight:bold}.primary{background:#2563eb;color:#fff}.secondary{background:#6b7280;color:#fff}.danger{background:#dc2626;color:#fff}.acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mensaje{padding:12px;border-radius:7px;margin-bottom:15px;background:#dcfce7;color:#166534}.error{padding:12px;border-radius:7px;margin-bottom:15px;background:#fee2e2;color:#991b1b}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e5e7eb;text-align:left}.badge{padding:4px 8px;border-radius:15px;font-size:12px;font-weight:bold}.admin{background:#dbeafe;color:#1e40af}.operador{background:#e5e7eb;color:#374151}.activo{background:#dcfce7;color:#166534}.inactivo{background:#fee2e2;color:#991b1b}@media(max-width:800px){.form-grid{grid-template-columns:1fr}.acciones{align-items:stretch}.acciones .btn{width:100%;text-align:center}}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f6f9;color:#1f2937}.navbar{background:#1f2937;color:#fff;padding:16px 30px;display:flex;justify-content:space-between;align-items:center}.navbar h1{margin:0;font-size:20px}.container{max-width:1100px;margin:30px auto;padding:0 20px}.card{background:#fff;border-radius:10px;padding:22px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}h2{margin-top:0}.form-grid{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:12px}.campo label{display:block;font-size:13px;font-weight:bold;margin-bottom:6px}.campo input,.campo select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:7px}.btn{display:inline-block;padding:10px 15px;border:0;border-radius:7px;text-decoration:none;cursor:pointer;font-weight:bold}.primary{background:#2563eb;color:#fff}.secondary{background:#6b7280;color:#fff}.danger{background:#dc2626;color:#fff}.acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mensaje{padding:12px;border-radius:7px;margin-bottom:15px;background:#dcfce7;color:#166534}.error{padding:12px;border-radius:7px;margin-bottom:15px;background:#fee2e2;color:#991b1b}.info{background:#f3f4f6;border-radius:8px;padding:14px;margin-bottom:18px}.info div{margin:4px 0}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid #e5e7eb;text-align:left}.badge{padding:4px 8px;border-radius:15px;font-size:12px;font-weight:bold}.admin{background:#dbeafe;color:#1e40af}.operador{background:#e5e7eb;color:#374151}.activo{background:#dcfce7;color:#166534}.inactivo{background:#fee2e2;color:#991b1b}@media(max-width:800px){.form-grid{grid-template-columns:1fr}.acciones{align-items:stretch}.acciones .btn{width:100%;text-align:center}}
 </style>
 </head>
 <body>
@@ -39,8 +52,28 @@ $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <br><button class="btn primary" type="submit">Crear usuario</button>
 </form>
 </div>
+
+<?php if($usuarioClave): ?>
+<div class="card">
+<h2>🔑 Cambiar contraseña</h2>
+<div class="info">
+<div><strong>Usuario:</strong> <?=htmlspecialchars((string)$usuarioClave['usuario_login'],ENT_QUOTES,'UTF-8')?></div>
+<div><strong>Nombre:</strong> <?=htmlspecialchars((string)$usuarioClave['nombre'],ENT_QUOTES,'UTF-8')?></div>
+<div><strong>Rol:</strong> <?=htmlspecialchars((string)$usuarioClave['rol'],ENT_QUOTES,'UTF-8')?></div>
+</div>
+<form method="post" action="usuarios_guardar.php" autocomplete="off">
+<input type="hidden" name="id" value="<?= (int)$usuarioClave['id'] ?>">
+<div class="form-grid" style="grid-template-columns:1fr 1fr">
+<div class="campo"><label>Nueva contraseña</label><input name="password" type="password" minlength="8" required autocomplete="new-password"></div>
+<div class="campo"><label>Confirmar contraseña</label><input name="password_confirm" type="password" minlength="8" required autocomplete="new-password"></div>
+</div>
+<div style="margin-top:12px"><button class="btn primary" type="submit" onclick="return confirm('¿Confirmar cambio de contraseña para este usuario?')">Cambiar contraseña</button> <a class="btn secondary" href="usuarios.php">Cancelar</a></div>
+</form>
+</div>
+<?php endif; ?>
+
 <div class="card"><h2>Usuarios registrados</h2><div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-<?php foreach($usuarios as $u): ?><tr><td><?= (int)$u['id'] ?></td><td><?=htmlspecialchars((string)$u['nombre'],ENT_QUOTES,'UTF-8')?></td><td><?=htmlspecialchars((string)$u['usuario_login'],ENT_QUOTES,'UTF-8')?></td><td><span class="badge <?=strtolower((string)$u['rol'])?>"><?=htmlspecialchars((string)$u['rol'])?></span></td><td><span class="badge <?=$u['activo']?'activo':'inactivo'?>"><?=$u['activo']?'ACTIVO':'INACTIVO'?></span></td><td><div class="acciones"><a class="btn <?=$u['activo']?'danger':'primary'?>" href="usuarios_estado.php?id=<?= (int)$u['id'] ?>&activo=<?=$u['activo']?'0':'1'?>" onclick="return confirm('¿Confirmar cambio de estado?')"><?=$u['activo']?'Desactivar':'Activar'?></a><a class="btn secondary" href="usuarios_clave.php?id=<?= (int)$u['id'] ?>">🔑 Cambiar clave</a></div></td></tr><?php endforeach; ?>
+<?php foreach($usuarios as $u): ?><tr><td><?= (int)$u['id'] ?></td><td><?=htmlspecialchars((string)$u['nombre'],ENT_QUOTES,'UTF-8')?></td><td><?=htmlspecialchars((string)$u['usuario_login'],ENT_QUOTES,'UTF-8')?></td><td><span class="badge <?=strtolower((string)$u['rol'])?>"><?=htmlspecialchars((string)$u['rol'])?></span></td><td><span class="badge <?=$u['activo']?'activo':'inactivo'?>"><?=$u['activo']?'ACTIVO':'INACTIVO'?></span></td><td><div class="acciones"><a class="btn <?=$u['activo']?'danger':'primary'?>" href="usuarios_estado.php?id=<?= (int)$u['id'] ?>&activo=<?=$u['activo']?'0':'1'?>" onclick="return confirm('¿Confirmar cambio de estado?')"><?=$u['activo']?'Desactivar':'Activar'?></a><a class="btn secondary" href="usuarios.php?clave=<?= (int)$u['id'] ?>">🔑 Cambiar clave</a></div></td></tr><?php endforeach; ?>
 </tbody></table></div></div>
 </div>
 </body></html>
